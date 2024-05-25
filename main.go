@@ -14,3 +14,9 @@ func init() {
 	}
 	flag.Parse()
 }
+
+func main() {
+	cfgPath := GetConfigPath()
+
+	cfg, err := Load(cfgPath)
+}
