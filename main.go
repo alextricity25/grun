@@ -2,6 +2,9 @@ package main
 
 import (
 	"flag"
+	"log"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func init() {
@@ -16,7 +19,12 @@ func init() {
 }
 
 func main() {
-	cfgPath := GetConfigPath()
+	// cfgPath := GetConfigPath()
 
-	cfg, err := Load(cfgPath)
+	// cfg, err := Load(cfgPath)
+	p := tea.NewProgram(newModel(defaultTime))
+
+	if _, err := p.Run(); err != nil {
+		log.Fatal(err)
+	}
 }
