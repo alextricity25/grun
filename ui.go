@@ -2,12 +2,15 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/timer"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"golang.org/x/term"
 )
 
 /*
@@ -27,6 +30,7 @@ const (
 	defaultTime              = time.Minute
 	timerView   sessionState = iota
 	spinnerView
+	tabView
 )
 
 var (
@@ -43,31 +47,58 @@ var (
 		spinner.Monkey,
 	}
 	modelStyle = lipgloss.NewStyle().
-			Width(15).
-			Height(5).
 			Align(lipgloss.Center, lipgloss.Center).
-			BorderStyle(lipgloss.HiddenBorder())
+			BorderStyle(lipgloss.NormalBorder()).
+			BorderForeground(lipgloss.Color("69"))
 	focusedModelStyle = lipgloss.NewStyle().
-				Width(15).
-				Height(5).
+				Width(50).
+				Height(10).
 				Align(lipgloss.Center, lipgloss.Center).
 				BorderStyle(lipgloss.NormalBorder()).
 				BorderForeground(lipgloss.Color("69"))
-	spinnerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("69"))
-	helpStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	spinnerStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("69"))
+	helpStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	inactiveTabBorder = tabBorderWithBottom("┴", "─", "┴")
+	activeTabBorder   = tabBorderWithBottom("┘", " ", "└")
+	docStyle          = lipgloss.NewStyle().Padding(1, 2, 1, 2)
+	highlightColor    = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
+	inactiveTabStyle  = lipgloss.NewStyle().Border(inactiveTabBorder, true).BorderForeground(highlightColor).Padding(0, 1)
+	activeTabStyle    = inactiveTabStyle.Copy().Border(activeTabBorder, true)
+	windowStyle       = lipgloss.NewStyle().BorderForeground(highlightColor).Padding(2, 0).Align(lipgloss.Center).Border(lipgloss.NormalBorder()).UnsetBorderTop()
 )
 
 type mainModel struct {
-	state   sessionState
-	timer   timer.Model
-	spinner spinner.Model
-	index   int
+	state      sessionState
+	timer      timer.Model
+	spinner    spinner.Model
+	index      int
+	Tabs       []string
+	TabContent []string
+	activeTab  int
+}
+
+func tabBorderWithBottom(left, middle, right string) lipgloss.Border {
+	border := lipgloss.RoundedBorder()
+	border.BottomLeft = left
+	border.Bottom = middle
+	border.BottomRight = right
+	return border
 }
 
 func newModel(timeout time.Duration) mainModel {
-	m := mainModel{state: timerView}
+	m := mainModel{state: tabView}
 	m.timer = timer.New(timeout)
 	m.spinner = spinner.New()
+	m.Tabs = []string{
+		"Services",
+		"Jobs",
+		"Blah",
+	}
+	m.TabContent = []string{
+		"Listing Cloud Run Services",
+		"Listing Cloud Run Jobs",
+		"blah blah blah",
+	}
 	return m
 }
 
@@ -119,11 +150,54 @@ func (m mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
+func (m mainModel) TabView() string {
+	doc := strings.Builder{}
+	physicalWidth, _, _ := term.GetSize(int(os.Stdout.Fd()))
+	tabTableWidth := (physicalWidth / 2)
+	realTabTableWidth := ((tabTableWidth / len(m.Tabs))) * len(m.Tabs)
+
+
+	var renderedTabs []string
+
+	for i, t := range m.Tabs {
+		var style lipgloss.Style
+		isFirst, isLast, isActive := i == 0, i == len(m.Tabs)-1, i == m.activeTab
+		if isActive {
+			style = activeTabStyle.Copy()
+		} else {
+			style = inactiveTabStyle.Copy()
+		}
+		border, _, _, _, _ := style.GetBorder()
+		if isFirst && isActive {
+			border.BottomLeft = "│"
+		} else if isFirst && !isActive {
+			border.BottomLeft = "├"
+		} else if isLast && isActive {
+			border.BottomRight = "│"
+		} else if isLast && !isActive {
+			border.BottomRight = "┤"
+		}
+		style = style.Border(border)
+		style.Width((realTabTableWidth / len(m.Tabs)) - 1)
+		renderedTabs = append(renderedTabs, style.Render(t))
+	}
+
+	row := lipgloss.JoinHorizontal(lipgloss.Top, renderedTabs...)
+	doc.WriteString(row)
+	doc.WriteString("\n")
+	doc.WriteString(windowStyle.Width((realTabTableWidth)).Render(m.TabContent[m.activeTab]))
+	return docStyle.Render(doc.String())
+}
+
 func (m mainModel) View() string {
+	physicalWidth, _, _ := term.GetSize(int(os.Stdout.Fd()))
 	var s string
 	model := m.currentFocusedModel()
-	if m.state == timerView {
-		s += lipgloss.JoinHorizontal(lipgloss.Top, focusedModelStyle.Render(fmt.Sprintf("%4s", m.timer.View())), modelStyle.Render(m.spinner.View()))
+	if m.state == tabView {
+		// s += lipgloss.JoinHorizontal(lipgloss.Top, focusedModelStyle.Render(fmt.Sprintf("%4s", m.TabView())), modelStyle.Render(m.spinner.View()))
+		// s += lipgloss.JoinHorizontal(lipgloss.Top, m.TabView(), modelStyle.Render(m.spinner.View()))
+		modelStyle.Width((physicalWidth / 2) - 5)
+		s += lipgloss.JoinHorizontal(lipgloss.Top, m.TabView(), modelStyle.Render(m.spinner.View()))
 	} else {
 		s += lipgloss.JoinHorizontal(lipgloss.Top, modelStyle.Render(fmt.Sprintf("%4s", m.timer.View())), focusedModelStyle.Render(m.spinner.View()))
 	}
