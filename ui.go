@@ -66,13 +66,14 @@ var (
 )
 
 type mainModel struct {
-	state      sessionState
-	timer      timer.Model
-	spinner    spinner.Model
-	index      int
-	Tabs       []string
-	TabContent []string
-	activeTab  int
+	state              sessionState
+	timer              timer.Model
+	spinner            spinner.Model
+	index              int
+	Tabs               []string
+	TabContent         []string
+	PreviewPaneContent string
+	activeTab          int
 }
 
 func tabBorderWithBottom(left, middle, right string) lipgloss.Border {
@@ -156,8 +157,7 @@ func (m mainModel) TabView() string {
 	doc := strings.Builder{}
 	physicalWidth, _, _ := term.GetSize(int(os.Stdout.Fd()))
 	tabTableWidth := (physicalWidth / 2)
-	realTabTableWidth := (((tabTableWidth / len(m.Tabs))) * len(m.Tabs))
-
+	realTabTableWidth := ((tabTableWidth / len(m.Tabs)) * len(m.Tabs))
 
 	var renderedTabs []string
 
@@ -191,17 +191,23 @@ func (m mainModel) TabView() string {
 	return docStyle.Render(doc.String())
 }
 
-func (m mainModel) PreviewPaneView() string{
+func (m mainModel) PreviewPaneView() string {
 	doc := strings.Builder{}
 	physicalWidth, _, _ := term.GetSize(int(os.Stdout.Fd()))
 	previewPaneView := (physicalWidth / 2) - 15
 	style := activeTabStyle.Copy()
 
 	style.Width(previewPaneView).
-	BorderStyle(lipgloss.NormalBorder()).
-	BorderForeground(lipgloss.Color("69"))
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("69"))
 
-	doc.WriteString(style.Render(m.spinner.View()))
+	if m.activeTab == 0 {
+		doc.WriteString(style.Render("Listing Cloud Run Services"))
+	} else if m.activeTab == 1 {
+		doc.WriteString(style.Render("Listing Cloud Run Jobs"))
+	} else {
+		doc.WriteString(style.Render("Listing Info What if this line wraps is super long like it's so long that it needs to wrap all the way"))
+	}
 	return docStyle.Render(doc.String())
 }
 
