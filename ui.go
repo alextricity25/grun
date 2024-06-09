@@ -5,7 +5,9 @@ import (
 	"os"
 	"strings"
 	"time"
+	"io"
 
+	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/timer"
 	tea "github.com/charmbracelet/bubbletea"
@@ -25,6 +27,12 @@ https://github.com/charmbracelet/bubbletea/tree/master/tutorials/basics
 
 // sessionState is used to track which model is focused
 type sessionState uint
+
+type item string
+
+type itemDelegate struct{}
+
+func (i item) FilterValue() string { return "" }
 
 const (
 	defaultTime              = time.Minute
@@ -63,6 +71,11 @@ var (
 	inactiveTabStyle  = lipgloss.NewStyle().Border(inactiveTabBorder, true).BorderForeground(highlightColor).Padding(0, 1)
 	activeTabStyle    = inactiveTabStyle.Copy().Border(activeTabBorder, true)
 	windowStyle       = lipgloss.NewStyle().BorderForeground(highlightColor).Padding(2, 0).Align(lipgloss.Center).Border(lipgloss.NormalBorder()).UnsetBorderTop()
+	titleStyle        = lipgloss.NewStyle().MarginLeft(2)
+	itemStyle         = lipgloss.NewStyle().PaddingLeft(4)
+	selectedItemStyle = lipgloss.NewStyle().PaddingLeft(2).Foreground(lipgloss.Color("170"))
+	paginationStyle   = list.DefaultStyles().PaginationStyle.PaddingLeft(4)
+	quitTextStyle     = lipgloss.NewStyle().Margin(1, 0, 2, 4)
 )
 
 type mainModel struct {
@@ -74,6 +87,28 @@ type mainModel struct {
 	TabContent         []string
 	PreviewPaneContent string
 	activeTab          int
+	grunServices       list.Model
+}
+func (d itemDelegate) Height() int                             { return 1 }
+func (d itemDelegate) Spacing() int                            { return 0 }
+func (d itemDelegate) Update(_ tea.Msg, _ *list.Model) tea.Cmd { return nil }
+
+func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list.Item) {
+	i, ok := listItem.(item)
+	if !ok {
+		return
+	}
+
+	str := fmt.Sprintf("%d. %s", index+1, i)
+
+	fn := itemStyle.Render
+	if index == m.Index() {
+		fn = func(s ...string) string {
+			return selectedItemStyle.Render("> " + strings.Join(s, " "))
+		}
+	}
+
+	fmt.Fprint(w, fn(str))
 }
 
 func tabBorderWithBottom(left, middle, right string) lipgloss.Border {
@@ -93,8 +128,17 @@ func newModel(timeout time.Duration) mainModel {
 		"Jobs",
 		"Info",
 	}
+
+	// grunServices list
+	items := []list.Item{}
+	for _, service := range getGrunServices() {
+		items = append(items, item(service))
+	}
+	l := list.New(items, itemDelegate{}, 20, 14)
+	l.Title = "Cloud Run Services"
+	m.grunServices = l
 	m.TabContent = []string{
-		"Listing Cloud Run Services",
+		m.grunServices.View(),
 		"Listing Cloud Run Jobs",
 		"Listing Info",
 	}
@@ -109,6 +153,7 @@ func (m mainModel) Init() tea.Cmd {
 func (m mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
+	m.grunServices, cmd = m.grunServices.Update(msg)
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -150,6 +195,7 @@ func (m mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.timer, cmd = m.timer.Update(msg)
 		cmds = append(cmds, cmd)
 	}
+
 	return m, tea.Batch(cmds...)
 }
 
@@ -160,6 +206,7 @@ func (m mainModel) TabView() string {
 	realTabTableWidth := ((tabTableWidth / len(m.Tabs)) * len(m.Tabs))
 
 	var renderedTabs []string
+	var tabContent string
 
 	for i, t := range m.Tabs {
 		var style lipgloss.Style
@@ -187,7 +234,12 @@ func (m mainModel) TabView() string {
 	row := lipgloss.JoinHorizontal(lipgloss.Top, renderedTabs...)
 	doc.WriteString(row)
 	doc.WriteString("\n")
-	doc.WriteString(windowStyle.Width((realTabTableWidth + 1)).Render(m.TabContent[m.activeTab]))
+	if m.activeTab == 0 {
+		tabContent = m.grunServices.View()
+	} else {
+		tabContent = m.TabContent[m.activeTab]
+	}
+	doc.WriteString(windowStyle.Width((realTabTableWidth + 1)).Render(tabContent))
 	return docStyle.Render(doc.String())
 }
 
