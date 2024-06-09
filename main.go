@@ -22,7 +22,10 @@ func main() {
 	// cfgPath := GetConfigPath()
 
 	// cfg, err := Load(cfgPath)
-	p := tea.NewProgram(newModel(defaultTime))
+	p := tea.NewProgram(
+		newModel(defaultTime),
+		tea.WithAltScreen(),
+	)
 
 	if _, err := p.Run(); err != nil {
 		log.Fatal(err)
